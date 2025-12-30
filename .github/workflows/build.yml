@@ -1,0 +1,44 @@
+name: SonarQube-Scan-and-Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sonar-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout full repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Required for accurate SonarQube analysis
+
+      # 2️⃣ Run SonarQube Scan
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # 3️⃣ Enforce Quality Gate (BLOCKS deployment on failure)
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # 4️⃣ Deploy to EC2 (ONLY if Quality Gate PASSES)
+      - name: Deploy to EC2
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /var/www/html
+            git pull origin main
+            sudo systemctl reload nginx
