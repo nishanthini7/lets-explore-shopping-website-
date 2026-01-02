@@ -10,42 +10,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout full repository
+      # 1️⃣ Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Required for accurate SonarQube analysis
+          fetch-depth: 0
 
-      # 2️⃣ Run SonarQube Scan
+      # 2️⃣ SonarQube Scan
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # 3️⃣ Enforce Quality Gate (BLOCKS deployment on failure)
+      # 3️⃣ Quality Gate
       - name: SonarQube Quality Gate
         uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # 4️⃣ Deploy to EC2 (ONLY if Quality Gate PASSES)
+      # 4️⃣ Setup SSH (NATIVE – NO APPLEBOY)
+      - name: Setup SSH
+        if: success()
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      # 5️⃣ Deploy to EC2
       - name: Deploy to EC2
         if: success()
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22
-
-          # 🔐 CRITICAL FIXES FOR SSH HANDSHAKE
-          cipher: aes256-ctr
-          use_insecure_cipher: true
-          debug: true
-
-          script: |
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             cd /var/www/html
             git pull origin main
             sudo systemctl reload nginx
+          EOF
