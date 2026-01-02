@@ -38,6 +38,13 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+
+          # 🔐 CRITICAL FIXES FOR SSH HANDSHAKE
+          cipher: aes256-ctr
+          use_insecure_cipher: true
+          debug: true
+
           script: |
             cd /var/www/html
             git pull origin main
