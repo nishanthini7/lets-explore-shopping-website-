@@ -23,27 +23,45 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      # 3️⃣ Quality Gate
+      # 3️⃣ SonarQube Quality Gate (blocks deploy on failure)
       - name: SonarQube Quality Gate
         uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # 4️⃣ Setup SSH (NATIVE – NO APPLEBOY)
+      # 4️⃣ Validate required secrets (FAIL FAST)
+      - name: Validate deployment secrets
+        run: |
+          if [ -z "${{ secrets.EC2_HOST }}" ]; then
+            echo "❌ EC2_HOST is empty"
+            exit 1
+          fi
+          if [ -z "${{ secrets.EC2_USER }}" ]; then
+            echo "❌ EC2_USER is empty"
+            exit 1
+          fi
+          if [ -z "${{ secrets.EC2_SSH_KEY }}" ]; then
+            echo "❌ EC2_SSH_KEY is empty"
+            exit 1
+          fi
+          echo "✅ All deployment secrets are present"
+
+      # 5️⃣ Setup SSH (NATIVE, SAFE)
       - name: Setup SSH
-        if: success()
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          printf "%s" "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
 
-      # 5️⃣ Deploy to EC2
+      # 6️⃣ Deploy to EC2
       - name: Deploy to EC2
-        if: success()
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" << 'EOF'
+            set -e
             cd /var/www/html
             git pull origin main
             sudo systemctl reload nginx
